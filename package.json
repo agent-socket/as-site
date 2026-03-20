@@ -12,7 +12,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/react": "^4.2.1",
+    "@astrojs/react": "^5.0.1",
     "astro": "^6.0.7",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

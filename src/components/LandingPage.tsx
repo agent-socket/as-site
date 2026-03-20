@@ -57,52 +57,106 @@ function HeroBackground() {
     }
 
     const nodes: Node[] = [];
-    const NODE_COUNT = 6;
+    const NODE_COUNT = 8;
+
+    interface Connection {
+      from: number;
+      to: number;
+      birth: number;
+      duration: number;
+    }
+
+    let connections: Connection[] = [];
+    let lastConnectionTime = 0;
 
     function resize() {
-      width = canvas!.offsetWidth;
-      height = canvas!.offsetHeight;
+      const parent = canvas!.parentElement;
+      width = parent?.offsetWidth || window.innerWidth;
+      height = parent?.offsetHeight || window.innerHeight;
+      // Fallback if parent hasn't laid out yet
+      if (height < 100) height = window.innerHeight;
       canvas!.width = width * 2;
       canvas!.height = height * 2;
-      ctx!.scale(2, 2);
+      ctx!.setTransform(2, 0, 0, 2, 0, 0);
     }
 
     function init() {
       resize();
       nodes.length = 0;
+      connections = [];
+      lastConnectionTime = performance.now();
       for (let i = 0; i < NODE_COUNT; i++) {
         nodes.push({
           x: Math.random() * width,
           y: Math.random() * height,
-          vx: (Math.random() - 0.5) * 0.4,
-          vy: (Math.random() - 0.5) * 0.4,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
           radius: 4 + Math.random() * 4,
           color: i % 2 === 0 ? COLORS.primary : COLORS.accent,
         });
       }
     }
 
+    function pickRandomPair(): [number, number] {
+      const a = Math.floor(Math.random() * NODE_COUNT);
+      let b = Math.floor(Math.random() * (NODE_COUNT - 1));
+      if (b >= a) b++;
+      return [a, b];
+    }
+
     function draw() {
+      const now = performance.now();
       ctx!.clearRect(0, 0, width, height);
 
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[j].x - nodes[i].x;
-          const dy = nodes[j].y - nodes[i].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const maxDist = 300;
-          if (dist < maxDist) {
-            const opacity = (1 - dist / maxDist) * 0.12;
+      // Spawn a new random connection every 1.5-3s
+      if (now - lastConnectionTime > 1500 + Math.random() * 1500) {
+        const [from, to] = pickRandomPair();
+        // Avoid duplicate active connections
+        const exists = connections.some(c => (c.from === from && c.to === to) || (c.from === to && c.to === from));
+        if (!exists) {
+          connections.push({ from, to, birth: now, duration: 2000 + Math.random() * 2000 });
+        }
+        lastConnectionTime = now;
+      }
+
+      // Remove expired connections
+      connections = connections.filter(c => now - c.birth < c.duration);
+
+      // Draw active connections with pulse rings
+      for (const conn of connections) {
+        const age = now - conn.birth;
+        const fadeIn = Math.min(age / 400, 1);
+        const fadeOut = Math.max(1 - (age - (conn.duration - 400)) / 400, 0);
+        const opacity = Math.min(fadeIn, age > conn.duration - 400 ? fadeOut : 1) * 0.2;
+
+        if (opacity > 0) {
+          const a = nodes[conn.from];
+          const b = nodes[conn.to];
+
+          // Line
+          ctx!.beginPath();
+          ctx!.moveTo(a.x, a.y);
+          ctx!.lineTo(b.x, b.y);
+          ctx!.strokeStyle = `rgba(99, 102, 241, ${opacity})`;
+          ctx!.lineWidth = 1.5;
+          ctx!.stroke();
+
+          // Expanding rings from both nodes
+          const ringProgress = Math.min(age / 1000, 1);
+          const ringRadius = 6 + ringProgress * 30;
+          const ringOpacity = (1 - ringProgress) * opacity * 2;
+
+          for (const node of [a, b]) {
             ctx!.beginPath();
-            ctx!.moveTo(nodes[i].x, nodes[i].y);
-            ctx!.lineTo(nodes[j].x, nodes[j].y);
-            ctx!.strokeStyle = `rgba(99, 102, 241, ${opacity})`;
-            ctx!.lineWidth = 1;
+            ctx!.arc(node.x, node.y, ringRadius, 0, Math.PI * 2);
+            ctx!.strokeStyle = `rgba(6, 182, 212, ${ringOpacity})`;
+            ctx!.lineWidth = 1.5;
             ctx!.stroke();
           }
         }
       }
 
+      // Draw nodes
       for (const node of nodes) {
         const gradient = ctx!.createRadialGradient(
           node.x, node.y, 0,
@@ -170,8 +224,16 @@ export default function LandingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    // TODO: wire to form backend
-    setSubmitted(true);
+    try {
+      const res = await fetch('https://formspree.io/f/xlgpvabq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (res.ok) setSubmitted(true);
+    } catch {
+      // fail silently
+    }
   };
 
   return (
